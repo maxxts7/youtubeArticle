@@ -20,15 +20,23 @@ DEFAULT_PROMPTS = {
 
 Provide the classification and a brief reason for your choice.""",
     
-    "extraction": """Find and extract the following elements from this transcript:
-- Key Ideas: Main concepts and themes
-- Introductions: How topics are introduced
-- Substantiations: Evidence, data, or support for claims
-- Analogies: Comparisons and metaphors used
-- Insights: Unique perspectives or realizations
-- Examples: Concrete examples provided
+    "extraction": """Extract the following elements from this transcript and present them in clear, natural language:
 
-Format as structured data.""",
+**Key Ideas**: What are the main concepts and themes discussed? Explain each one clearly.
+
+**Topic Introductions**: How are new topics introduced throughout the content? What transition methods are used?
+
+**Supporting Evidence**: What data, facts, statistics, or evidence is provided to support claims? List specific examples.
+
+**Analogies and Comparisons**: What comparisons, metaphors, or analogies are used to explain concepts? Describe them in detail.
+
+**Unique Insights**: What unique perspectives, realizations, or "aha moments" are shared? Explain their significance.
+
+**Concrete Examples**: What specific examples, case studies, or stories are mentioned? Describe them clearly.
+
+**Additional Elements**: Any other notable patterns, techniques, or elements worth highlighting.
+
+Write each section in clear, natural language that someone unfamiliar with the content can easily understand.""",
     
     "writing": """Based on the extracted elements, write an article following these principles:
 - Minimize words, maximize clarity
@@ -37,6 +45,30 @@ Format as structured data.""",
 - Clear structure with headings
 - Engaging but concise"""
 }
+
+# Default model settings
+DEFAULT_MODEL_SETTINGS = {
+    "classification_model": "claude-3-5-sonnet-20241022",
+    "extraction_model": "claude-3-5-sonnet-20241022", 
+    "writing_model": "claude-3-5-sonnet-20241022",
+    "classification_max_tokens": 500,
+    "extraction_max_tokens": 3000,
+    "writing_max_tokens": 4000,
+    "classification_temperature": 0.3,
+    "extraction_temperature": 0.5,
+    "writing_temperature": 0.7
+}
+
+# Available Claude models
+AVAILABLE_MODELS = [
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-20241022", 
+    "claude-3-opus-20240229",
+    "claude-3-sonnet-20240229",
+    "claude-3-haiku-20240307",
+    "claude-4-opus-20250514",
+    "claude-4-sonnet-20250514"
+]
 
 
 class YouTubeTranscriptExtractor:
@@ -89,10 +121,11 @@ class YouTubeTranscriptExtractor:
 
 
 class EnhancedArticleGenerator:
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, model_settings: Dict):
         try:
             self.client = anthropic.Anthropic(api_key=api_key)
             self.api_key_valid = True
+            self.model_settings = model_settings
         except Exception as e:
             self.api_key_valid = False
             self.error_message = str(e)
@@ -102,25 +135,19 @@ class EnhancedArticleGenerator:
             return False, f"API key validation failed: {self.error_message}"
         return True, "API key is valid"
     
-    def classify_content(self, transcript: str, classification_prompt: str, progress_callback=None) -> Dict:
+    def classify_content(self, transcript: str, classification_prompt: str) -> Dict:
         """Phase 1: Classify the content type"""
         try:
-            if progress_callback:
-                progress_callback("🔍 Phase 1/3: Classifying content type...")
-            
             prompt = f"{classification_prompt}\n\nTranscript:\n{transcript[:5000]}"  # Limit for classification
             
             message = self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=500,
-                temperature=0.3,
+                model=self.model_settings["classification_model"],
+                max_tokens=self.model_settings["classification_max_tokens"],
+                temperature=self.model_settings["classification_temperature"],
                 messages=[{"role": "user", "content": prompt}]
             )
             
             classification_result = message.content[0].text
-            
-            if progress_callback:
-                progress_callback("✅ Classification complete!")
             
             return {
                 "success": True,
@@ -132,30 +159,24 @@ class EnhancedArticleGenerator:
                 "error": str(e)
             }
     
-    def extract_elements(self, transcript: str, classification: str, extraction_prompt: str, progress_callback=None) -> Dict:
+    def extract_elements(self, transcript: str, classification: str, extraction_prompt: str) -> Dict:
         """Phase 2: Extract key elements based on classification"""
         try:
-            if progress_callback:
-                progress_callback("📊 Phase 2/3: Extracting key elements...")
-            
             prompt = f"""Based on the classification: {classification}
             
 {extraction_prompt}
 
 Transcript:
-{transcript[:10000]}"""  # Increased limit for extraction
+{transcript[:15000]}"""  # Increased limit for extraction
             
             message = self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=2000,
-                temperature=0.5,
+                model=self.model_settings["extraction_model"],
+                max_tokens=self.model_settings["extraction_max_tokens"],
+                temperature=self.model_settings["extraction_temperature"],
                 messages=[{"role": "user", "content": prompt}]
             )
             
             extraction_result = message.content[0].text
-            
-            if progress_callback:
-                progress_callback("✅ Extraction complete!")
             
             return {
                 "success": True,
@@ -167,12 +188,9 @@ Transcript:
                 "error": str(e)
             }
     
-    def write_article(self, extracted_elements: str, writing_prompt: str, progress_callback=None) -> str:
+    def write_article(self, extracted_elements: str, writing_prompt: str) -> str:
         """Phase 3: Write the final article"""
         try:
-            if progress_callback:
-                progress_callback("✍️ Phase 3/3: Writing article...")
-            
             prompt = f"""{writing_prompt}
 
 Extracted Elements:
@@ -181,67 +199,15 @@ Extracted Elements:
 Create a well-structured article based on these elements."""
             
             message = self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=4000,
-                temperature=0.7,
+                model=self.model_settings["writing_model"],
+                max_tokens=self.model_settings["writing_max_tokens"],
+                temperature=self.model_settings["writing_temperature"],
                 messages=[{"role": "user", "content": prompt}]
             )
-            
-            if progress_callback:
-                progress_callback("✅ Article generation complete!")
             
             return message.content[0].text
         except Exception as e:
             return f"Error writing article: {str(e)}"
-    
-    def generate_article_3phase(self, transcript: str, prompts: Dict, progress_callback=None) -> Dict:
-        """Complete 3-phase article generation"""
-        results = {
-            "classification": None,
-            "extraction": None,
-            "article": None,
-            "success": True
-        }
-        
-        # Phase 1: Classification
-        classification_result = self.classify_content(
-            transcript, 
-            prompts["classification"], 
-            progress_callback
-        )
-        
-        if not classification_result["success"]:
-            results["success"] = False
-            results["error"] = classification_result["error"]
-            return results
-        
-        results["classification"] = classification_result["classification"]
-        
-        # Phase 2: Extraction
-        extraction_result = self.extract_elements(
-            transcript,
-            results["classification"],
-            prompts["extraction"],
-            progress_callback
-        )
-        
-        if not extraction_result["success"]:
-            results["success"] = False
-            results["error"] = extraction_result["error"]
-            return results
-        
-        results["extraction"] = extraction_result["extracted_elements"]
-        
-        # Phase 3: Writing
-        article = self.write_article(
-            results["extraction"],
-            prompts["writing"],
-            progress_callback
-        )
-        
-        results["article"] = article
-        
-        return results
 
 
 def apply_enhanced_css():
@@ -299,52 +265,47 @@ def apply_enhanced_css():
         transform: translateY(-2px);
     }
     
-    /* Phase Indicator */
-    .phase-indicator {
-        display: flex;
-        justify-content: space-between;
-        margin: 2rem 0;
-        padding: 1rem;
+    /* Phase Card */
+    .phase-card {
         background: white;
-        border-radius: 15px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        padding: 2rem;
+        border-radius: 16px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        margin: 2rem 0;
+        border-left: 4px solid var(--primary-color);
     }
     
-    .phase-item {
-        flex: 1;
-        text-align: center;
-        padding: 1rem;
-        position: relative;
+    .phase-header {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #1f2937;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
     }
     
-    .phase-item.active {
-        color: var(--primary-color);
-        font-weight: 600;
-    }
-    
-    .phase-item.completed {
-        color: var(--success-color);
-    }
-    
-    .phase-number {
+    .phase-status {
         display: inline-block;
-        width: 35px;
-        height: 35px;
-        line-height: 35px;
-        border-radius: 50%;
-        background: #e5e7eb;
-        margin-bottom: 0.5rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.875rem;
         font-weight: 600;
     }
     
-    .phase-item.active .phase-number {
+    .phase-status.active {
         background: var(--primary-color);
         color: white;
     }
     
-    .phase-item.completed .phase-number {
+    .phase-status.completed {
         background: var(--success-color);
         color: white;
+    }
+    
+    .phase-status.pending {
+        background: #e5e7eb;
+        color: #6b7280;
     }
     
     /* Button Styling */
@@ -365,6 +326,76 @@ def apply_enhanced_css():
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
     }
     
+    /* API Key Card */
+    .api-key-card {
+        background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+        border: 2px solid var(--primary-color);
+        padding: 3rem;
+        border-radius: 20px;
+        text-align: center;
+        margin: 2rem auto;
+        max-width: 600px;
+    }
+    
+    /* Input Fields */
+    .stTextInput > div > div > input,
+    .stTextArea > div > div > textarea {
+        border-radius: 12px;
+        border: 2px solid #e5e7eb;
+        transition: all 0.3s ease;
+    }
+    
+    .stTextInput > div > div > input:focus,
+    .stTextArea > div > div > textarea:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+    
+    /* Result Box */
+    .result-box {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+    }
+    
+    /* Prompt Editor */
+    .prompt-editor {
+        background: #f9fafb;
+        border: 2px dashed #e5e7eb;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        transition: all 0.3s ease;
+    }
+    
+    .prompt-editor:hover {
+        border-color: var(--primary-color);
+        background: #f3f4f6;
+    }
+    
+    /* Success/Error Messages */
+    .success-message {
+        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+        border: 1px solid #10b981;
+        color: #065f46;
+        padding: 1rem 1.5rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        font-weight: 500;
+    }
+    
+    .error-message {
+        background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+        border: 1px solid #ef4444;
+        color: #991b1b;
+        padding: 1rem 1.5rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        font-weight: 500;
+    }
+    
     /* Tab Styling */
     .stTabs [data-baseweb="tab-list"] {
         background: white;
@@ -383,105 +414,13 @@ def apply_enhanced_css():
         background: var(--bg-gradient);
         color: white;
     }
-    
-    /* Progress Messages */
-    .progress-message {
-        background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-        border-left: 4px solid var(--primary-color);
-        padding: 1rem 1.5rem;
-        border-radius: 8px;
-        margin: 1rem 0;
-        font-weight: 500;
-    }
-    
-    /* Input Fields */
-    .stTextInput > div > div > input,
-    .stTextArea > div > div > textarea {
-        border-radius: 12px;
-        border: 2px solid #e5e7eb;
-        transition: all 0.3s ease;
-    }
-    
-    .stTextInput > div > div > input:focus,
-    .stTextArea > div > div > textarea:focus {
-        border-color: var(--primary-color);
-        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-    }
-    
-    /* Sidebar Styling */
-    .css-1d391kg {
-        background: linear-gradient(180deg, #fafbff 0%, #f3f4f6 100%);
-    }
-    
-    /* Success/Error Messages */
-    .success-banner {
-        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
-        border: 1px solid #10b981;
-        color: #065f46;
-        padding: 1rem 1.5rem;
-        border-radius: 12px;
-        margin: 1rem 0;
-        font-weight: 500;
-    }
-    
-    .error-banner {
-        background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-        border: 1px solid #ef4444;
-        color: #991b1b;
-        padding: 1rem 1.5rem;
-        border-radius: 12px;
-        margin: 1rem 0;
-        font-weight: 500;
-    }
-    
-    /* Prompt Editor */
-    .prompt-editor {
-        background: #f9fafb;
-        border: 2px dashed #e5e7eb;
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-    }
-    
-    .prompt-editor:hover {
-        border-color: var(--primary-color);
-        background: #f3f4f6;
-    }
     </style>
     """, unsafe_allow_html=True)
 
 
-def render_phase_indicator(current_phase: str = None):
-    """Render the 3-phase progress indicator"""
-    phases = [
-        ("1", "Classification", "classification"),
-        ("2", "Extraction", "extraction"),
-        ("3", "Writing", "writing")
-    ]
-    
-    html = '<div class="phase-indicator">'
-    
-    for num, name, key in phases:
-        status = ""
-        if current_phase == key:
-            status = "active"
-        elif current_phase and phases.index((num, name, key)) < [p[2] for p in phases].index(current_phase):
-            status = "completed"
-        
-        html += f'''
-        <div class="phase-item {status}">
-            <div class="phase-number">{num}</div>
-            <div>{name}</div>
-        </div>
-        '''
-    
-    html += '</div>'
-    st.markdown(html, unsafe_allow_html=True)
-
-
 def main():
     st.set_page_config(
-        page_title="YouTube AI Article Generator - Pro",
+        page_title="YouTube AI Article Generator",
         page_icon="🎬",
         layout="wide",
         initial_sidebar_state="expanded"
@@ -490,6 +429,10 @@ def main():
     apply_enhanced_css()
     
     # Initialize session state
+    if 'api_key' not in st.session_state:
+        st.session_state.api_key = None
+    if 'api_key_validated' not in st.session_state:
+        st.session_state.api_key_validated = False
     if 'transcript_data' not in st.session_state:
         st.session_state.transcript_data = None
     if 'structured_data' not in st.session_state:
@@ -498,262 +441,454 @@ def main():
         st.session_state.video_id = None
     if 'plain_text' not in st.session_state:
         st.session_state.plain_text = None
-    if 'generation_results' not in st.session_state:
-        st.session_state.generation_results = None
-    if 'article_generating' not in st.session_state:
-        st.session_state.article_generating = False
+    if 'current_phase' not in st.session_state:
+        st.session_state.current_phase = None
+    if 'classification_result' not in st.session_state:
+        st.session_state.classification_result = None
+    if 'extraction_result' not in st.session_state:
+        st.session_state.extraction_result = None
+    if 'article_result' not in st.session_state:
+        st.session_state.article_result = None
     if 'custom_prompts' not in st.session_state:
         st.session_state.custom_prompts = DEFAULT_PROMPTS.copy()
+    if 'model_settings' not in st.session_state:
+        st.session_state.model_settings = DEFAULT_MODEL_SETTINGS.copy()
     
     # Header
-    st.markdown('<h1 class="main-header">🎬 YouTube AI Article Generator Pro</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">Advanced 3-Phase AI Article Generation with Custom Prompts</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">🎬 YouTube AI Article Generator</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">Transform YouTube videos into professional articles with AI</p>', unsafe_allow_html=True)
     
-    # Sidebar Configuration
-    with st.sidebar:
-        st.header("⚙️ Configuration")
+    # API Key Setup (First Time)
+    if not st.session_state.api_key_validated:
+        st.markdown('<div class="api-key-card">', unsafe_allow_html=True)
+        st.markdown("### 🔑 Welcome! Let's get started")
+        st.markdown("Please enter your Anthropic API key to begin generating articles.")
         
-        with st.expander("🔑 API Settings", expanded=True):
-            api_key = st.text_input(
-                "Anthropic API Key",
-                type="password",
-                help="Your Anthropic API key for Claude AI",
-                placeholder="sk-ant-..."
-            )
+        api_key_input = st.text_input(
+            "Anthropic API Key",
+            type="password",
+            placeholder="sk-ant-...",
+            help="Your API key will be used only for this session"
+        )
+        
+        if st.button("🚀 Start Using App", type="primary", disabled=not api_key_input):
+            # Validate API key
+            generator = EnhancedArticleGenerator(api_key_input, DEFAULT_MODEL_SETTINGS)
+            is_valid, message = generator.validate_api_key()
+            
+            if is_valid:
+                st.session_state.api_key = api_key_input
+                st.session_state.api_key_validated = True
+                st.rerun()
+            else:
+                st.error(f"❌ {message}")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        return
+    
+    # Sidebar - Configuration Dashboard
+    with st.sidebar:
+        st.header("⚙️ Configuration Dashboard")
+        
+        # Show transcript if available
+        if st.session_state.transcript_data:
+            with st.expander("📄 View Transcript", expanded=False):
+                st.text_area(
+                    "Transcript",
+                    value=st.session_state.transcript_data,
+                    height=300,
+                    label_visibility="collapsed"
+                )
         
         st.divider()
         
-        # Prompt Dashboard
-        st.header("📝 Prompt Dashboard")
-        st.caption("Customize prompts for each generation phase")
+        # Model Settings
+        st.subheader("🤖 Model Settings")
+        
+        with st.expander("⚙️ Model Configuration", expanded=False):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**Classification**")
+                st.session_state.model_settings["classification_model"] = st.selectbox(
+                    "Model",
+                    AVAILABLE_MODELS,
+                    index=AVAILABLE_MODELS.index(st.session_state.model_settings["classification_model"]),
+                    key="class_model"
+                )
+                st.session_state.model_settings["classification_max_tokens"] = st.number_input(
+                    "Max Tokens",
+                    min_value=100,
+                    max_value=8192,
+                    value=st.session_state.model_settings["classification_max_tokens"],
+                    key="class_tokens"
+                )
+                st.session_state.model_settings["classification_temperature"] = st.slider(
+                    "Temperature",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=st.session_state.model_settings["classification_temperature"],
+                    step=0.1,
+                    key="class_temp"
+                )
+            
+            with col2:
+                st.markdown("**Extraction**")
+                st.session_state.model_settings["extraction_model"] = st.selectbox(
+                    "Model",
+                    AVAILABLE_MODELS,
+                    index=AVAILABLE_MODELS.index(st.session_state.model_settings["extraction_model"]),
+                    key="extract_model"
+                )
+                st.session_state.model_settings["extraction_max_tokens"] = st.number_input(
+                    "Max Tokens",
+                    min_value=100,
+                    max_value=8192,
+                    value=st.session_state.model_settings["extraction_max_tokens"],
+                    key="extract_tokens"
+                )
+                st.session_state.model_settings["extraction_temperature"] = st.slider(
+                    "Temperature",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=st.session_state.model_settings["extraction_temperature"],
+                    step=0.1,
+                    key="extract_temp"
+                )
+            
+            st.markdown("**Writing**")
+            col3, col4, col5 = st.columns(3)
+            with col3:
+                st.session_state.model_settings["writing_model"] = st.selectbox(
+                    "Model",
+                    AVAILABLE_MODELS,
+                    index=AVAILABLE_MODELS.index(st.session_state.model_settings["writing_model"]),
+                    key="write_model"
+                )
+            with col4:
+                st.session_state.model_settings["writing_max_tokens"] = st.number_input(
+                    "Max Tokens",
+                    min_value=100,
+                    max_value=8192,
+                    value=st.session_state.model_settings["writing_max_tokens"],
+                    key="write_tokens"
+                )
+            with col5:
+                st.session_state.model_settings["writing_temperature"] = st.slider(
+                    "Temperature",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=st.session_state.model_settings["writing_temperature"],
+                    step=0.1,
+                    key="write_temp"
+                )
+        
+        st.divider()
+        
+        # Prompt customization
+        st.subheader("📝 Customize Prompts")
         
         with st.expander("🔍 Classification Prompt"):
             st.session_state.custom_prompts["classification"] = st.text_area(
                 "Classification",
                 value=st.session_state.custom_prompts["classification"],
-                height=150,
-                help="Prompt for content classification"
+                height=200,
+                label_visibility="collapsed"
             )
         
         with st.expander("📊 Extraction Prompt"):
             st.session_state.custom_prompts["extraction"] = st.text_area(
                 "Extraction",
                 value=st.session_state.custom_prompts["extraction"],
-                height=150,
-                help="Prompt for element extraction"
+                height=300,
+                label_visibility="collapsed"
             )
         
         with st.expander("✍️ Writing Prompt"):
             st.session_state.custom_prompts["writing"] = st.text_area(
                 "Writing",
                 value=st.session_state.custom_prompts["writing"],
-                height=150,
-                help="Prompt for article writing"
+                height=200,
+                label_visibility="collapsed"
             )
         
-        if st.button("🔄 Reset to Defaults", type="secondary"):
+        if st.button("🔄 Reset All to Defaults"):
             st.session_state.custom_prompts = DEFAULT_PROMPTS.copy()
+            st.session_state.model_settings = DEFAULT_MODEL_SETTINGS.copy()
             st.rerun()
     
     # Main Content Area
     extractor = YouTubeTranscriptExtractor()
+    generator = EnhancedArticleGenerator(st.session_state.api_key, st.session_state.model_settings)
     
-    # URL Input Section
-    with st.container():
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        col1, col2 = st.columns([4, 1])
-        
-        with col1:
-            youtube_url = st.text_input(
-                "🎥 YouTube URL",
-                placeholder="https://www.youtube.com/watch?v=example",
-                help="Paste any YouTube video URL here",
-                label_visibility="collapsed"
-            )
-        
-        with col2:
-            extract_button = st.button("🚀 Extract", type="primary", use_container_width=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Handle transcript extraction
-    if extract_button and youtube_url:
-        video_id = extractor.extract_video_id(youtube_url)
-        
-        if not video_id:
-            st.markdown('<div class="error-banner">❌ Invalid YouTube URL. Please check the format.</div>', unsafe_allow_html=True)
-        else:
-            with st.spinner("🔄 Extracting transcript..."):
-                transcript_text, structured_data, plain_text = extractor.get_transcript_with_timestamps(video_id)
+    # Step 1: YouTube URL Input
+    if not st.session_state.transcript_data:
+        with st.container():
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            st.markdown("### 🎥 Step 1: Enter YouTube URL")
             
-            if transcript_text.startswith("Error:"):
-                st.markdown(f'<div class="error-banner">{transcript_text}</div>', unsafe_allow_html=True)
-            else:
-                st.session_state.transcript_data = transcript_text
-                st.session_state.structured_data = structured_data
-                st.session_state.video_id = video_id
-                st.session_state.plain_text = plain_text
-                st.session_state.generation_results = None
-                
-                st.markdown('<div class="success-banner">✅ Transcript extracted successfully!</div>', unsafe_allow_html=True)
+            col1, col2 = st.columns([4, 1])
+            
+            with col1:
+                youtube_url = st.text_input(
+                    "YouTube URL",
+                    placeholder="https://www.youtube.com/watch?v=example",
+                    label_visibility="collapsed"
+                )
+            
+            with col2:
+                if st.button("🚀 Extract", type="primary", use_container_width=True):
+                    if youtube_url:
+                        video_id = extractor.extract_video_id(youtube_url)
+                        
+                        if not video_id:
+                            st.error("❌ Invalid YouTube URL. Please check the format.")
+                        else:
+                            with st.spinner("🔄 Extracting transcript..."):
+                                transcript_text, structured_data, plain_text = extractor.get_transcript_with_timestamps(video_id)
+                            
+                            if transcript_text.startswith("Error:"):
+                                st.error(transcript_text)
+                            else:
+                                st.session_state.transcript_data = transcript_text
+                                st.session_state.structured_data = structured_data
+                                st.session_state.video_id = video_id
+                                st.session_state.plain_text = plain_text
+                                st.session_state.current_phase = "ready"
+                                st.rerun()
+            
+            st.markdown('</div>', unsafe_allow_html=True)
     
-    # Display content if transcript is available
-    if st.session_state.transcript_data:
-        # Main tabs
-        tab1, tab2, tab3, tab4 = st.tabs([
-            "📄 Transcript", 
-            "🤖 AI Generation", 
-            "📊 Analysis",
-            "💾 Downloads"
-        ])
+    # Step 2: Article Generation Workflow
+    elif st.session_state.transcript_data:
+        # Show current status
+        if st.session_state.current_phase == "ready":
+            st.success("✅ Transcript extracted successfully!")
+            
+            with st.container():
+                st.markdown('<div class="card">', unsafe_allow_html=True)
+                st.markdown("### 🤖 Ready to Generate Article")
+                st.markdown("Click the button below to start the AI-powered article generation process.")
+                
+                if st.button("🎨 Generate Article", type="primary"):
+                    st.session_state.current_phase = "classification"
+                    st.rerun()
+                
+                st.markdown('</div>', unsafe_allow_html=True)
         
-        with tab1:
-            st.markdown("### 📝 Timestamped Transcript")
-            st.text_area(
-                "Transcript Content",
-                value=st.session_state.transcript_data,
-                height=600,
-                label_visibility="collapsed"
-            )
-        
-        with tab2:
-            if not api_key:
-                st.warning("🔑 Please enter your Anthropic API key in the sidebar to generate articles.")
-            else:
-                # Phase indicator
-                render_phase_indicator()
-                
-                # Generation controls
-                col1, col2, col3 = st.columns([2, 2, 1])
-                
-                with col1:
-                    if st.button("🎨 Generate Article", type="primary", disabled=st.session_state.article_generating):
-                        st.session_state.article_generating = True
-                        st.session_state.generation_results = None
-                        st.rerun()
-                
-                with col2:
-                    if st.session_state.generation_results:
-                        if st.button("🔄 Regenerate", type="secondary"):
-                            st.session_state.generation_results = None
-                            st.rerun()
-                
-                # Progress container
-                progress_container = st.empty()
-                
-                # Handle generation
-                if st.session_state.article_generating and not st.session_state.generation_results:
-                    def update_progress(message):
-                        progress_container.markdown(f'<div class="progress-message">{message}</div>', unsafe_allow_html=True)
+        # Phase 1: Classification
+        elif st.session_state.current_phase == "classification":
+            st.markdown('<div class="phase-card">', unsafe_allow_html=True)
+            st.markdown('<div class="phase-header">🔍 Phase 1: Content Classification <span class="phase-status active">Active</span></div>', unsafe_allow_html=True)
+            
+            if not st.session_state.classification_result:
+                with st.spinner("Analyzing content type..."):
+                    result = generator.classify_content(
+                        st.session_state.plain_text,
+                        st.session_state.custom_prompts["classification"]
+                    )
                     
-                    try:
-                        generator = EnhancedArticleGenerator(api_key)
-                        
-                        # Validate API key
-                        is_valid, validation_message = generator.validate_api_key()
-                        if not is_valid:
-                            st.error(f"❌ {validation_message}")
-                            st.session_state.article_generating = False
-                            st.rerun()
-                        
-                        # Run 3-phase generation
-                        results = generator.generate_article_3phase(
-                            st.session_state.plain_text,
-                            st.session_state.custom_prompts,
-                            progress_callback=update_progress
-                        )
-                        
-                        st.session_state.generation_results = results
-                        st.session_state.article_generating = False
-                        progress_container.empty()
+                    if result["success"]:
+                        st.session_state.classification_result = result["classification"]
                         st.rerun()
-                        
-                    except Exception as e:
-                        st.error(f"❌ Error: {str(e)}")
-                        st.session_state.article_generating = False
-                        st.rerun()
-                
-                # Display results
-                if st.session_state.generation_results:
-                    results = st.session_state.generation_results
-                    
-                    if results["success"]:
-                        # Show phase results in expandable sections
-                        with st.expander("🔍 Phase 1: Classification", expanded=False):
-                            st.markdown("**Content Classification:**")
-                            st.info(results["classification"])
-                        
-                        with st.expander("📊 Phase 2: Extraction", expanded=False):
-                            st.markdown("**Extracted Elements:**")
-                            st.info(results["extraction"])
-                        
-                        # Final article
-                        st.markdown("### 📰 Generated Article")
-                        st.markdown('<div class="card">', unsafe_allow_html=True)
-                        st.markdown(results["article"])
-                        st.markdown('</div>', unsafe_allow_html=True)
                     else:
-                        st.error(f"Generation failed: {results.get('error', 'Unknown error')}")
-        
-        with tab3:
-            st.markdown("### 📊 Transcript Analysis")
-            
-            if st.session_state.structured_data:
+                        st.error(f"❌ Error: {result['error']}")
+            else:
+                st.markdown("**Classification Result:**")
+                st.info(st.session_state.classification_result)
+                
+                st.markdown("**Prompt Used:**")
+                with st.expander("View/Edit Classification Prompt"):
+                    new_prompt = st.text_area(
+                        "Classification Prompt",
+                        value=st.session_state.custom_prompts["classification"],
+                        height=150,
+                        label_visibility="collapsed"
+                    )
+                    if new_prompt != st.session_state.custom_prompts["classification"]:
+                        st.session_state.custom_prompts["classification"] = new_prompt
+                
                 col1, col2, col3 = st.columns(3)
-                
                 with col1:
-                    st.metric("Total Segments", len(st.session_state.structured_data))
-                
+                    if st.button("✅ Continue to Extraction", type="primary"):
+                        st.session_state.current_phase = "extraction"
+                        st.rerun()
                 with col2:
-                    duration = extractor.format_timestamp(st.session_state.structured_data[-1]['start_seconds'])
-                    st.metric("Video Duration", duration)
-                
+                    if st.button("🔄 Re-classify"):
+                        st.session_state.classification_result = None
+                        st.rerun()
                 with col3:
-                    word_count = len(st.session_state.plain_text.split())
-                    st.metric("Word Count", f"{word_count:,}")
-                
-                # Segment viewer
-                st.markdown("#### 🔍 Transcript Segments")
-                segments_to_show = st.slider("Number of segments to display", 5, 50, 10)
-                
-                for i, segment in enumerate(st.session_state.structured_data[:segments_to_show]):
-                    with st.expander(f"[{segment['timestamp']}] Segment {i+1}"):
-                        st.write(segment['text'])
-        
-        with tab4:
-            st.markdown("### 💾 Download Options")
+                    if st.button("❌ Start Over"):
+                        st.session_state.transcript_data = None
+                        st.session_state.classification_result = None
+                        st.session_state.current_phase = None
+                        st.rerun()
             
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Phase 2: Extraction
+        elif st.session_state.current_phase == "extraction":
+            # Show classification as completed
+            with st.expander("✅ Phase 1: Classification (Completed)", expanded=False):
+                st.info(st.session_state.classification_result)
+            
+            st.markdown('<div class="phase-card">', unsafe_allow_html=True)
+            st.markdown('<div class="phase-header">📊 Phase 2: Element Extraction <span class="phase-status active">Active</span></div>', unsafe_allow_html=True)
+            
+            if not st.session_state.extraction_result:
+                with st.spinner("Extracting key elements..."):
+                    result = generator.extract_elements(
+                        st.session_state.plain_text,
+                        st.session_state.classification_result,
+                        st.session_state.custom_prompts["extraction"]
+                    )
+                    
+                    if result["success"]:
+                        st.session_state.extraction_result = result["extracted_elements"]
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Error: {result['error']}")
+            else:
+                st.markdown("**Extracted Elements:**")
+                st.info(st.session_state.extraction_result)
+                
+                st.markdown("**Prompt Used:**")
+                with st.expander("View/Edit Extraction Prompt"):
+                    new_prompt = st.text_area(
+                        "Extraction Prompt",
+                        value=st.session_state.custom_prompts["extraction"],
+                        height=150,
+                        label_visibility="collapsed"
+                    )
+                    if new_prompt != st.session_state.custom_prompts["extraction"]:
+                        st.session_state.custom_prompts["extraction"] = new_prompt
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    if st.button("✅ Continue to Writing", type="primary"):
+                        st.session_state.current_phase = "writing"
+                        st.rerun()
+                with col2:
+                    if st.button("🔄 Re-extract"):
+                        st.session_state.extraction_result = None
+                        st.rerun()
+                with col3:
+                    if st.button("⬅️ Back to Classification"):
+                        st.session_state.current_phase = "classification"
+                        st.session_state.extraction_result = None
+                        st.rerun()
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Phase 3: Writing
+        elif st.session_state.current_phase == "writing":
+            # Show previous phases as completed
+            with st.expander("✅ Phase 1: Classification (Completed)", expanded=False):
+                st.info(st.session_state.classification_result)
+            
+            with st.expander("✅ Phase 2: Extraction (Completed)", expanded=False):
+                st.info(st.session_state.extraction_result)
+            
+            st.markdown('<div class="phase-card">', unsafe_allow_html=True)
+            st.markdown('<div class="phase-header">✍️ Phase 3: Article Writing <span class="phase-status active">Active</span></div>', unsafe_allow_html=True)
+            
+            # Show writing prompt editor first
+            st.markdown("**Customize Writing Prompt:**")
+            with st.expander("Edit Writing Prompt", expanded=True):
+                new_prompt = st.text_area(
+                    "Writing Prompt",
+                    value=st.session_state.custom_prompts["writing"],
+                    height=150,
+                    label_visibility="collapsed"
+                )
+                if new_prompt != st.session_state.custom_prompts["writing"]:
+                    st.session_state.custom_prompts["writing"] = new_prompt
+            
+            # Generate button
+            if st.button("✍️ Generate Article", type="primary"):
+                with st.spinner("Writing article..."):
+                    article = generator.write_article(
+                        st.session_state.extraction_result,
+                        st.session_state.custom_prompts["writing"]
+                    )
+                    st.session_state.article_result = article
+                    st.session_state.current_phase = "completed"
+                    st.rerun()
+            
+            # Navigation buttons
             col1, col2 = st.columns(2)
+            with col1:
+                if st.button("⬅️ Back to Extraction"):
+                    st.session_state.current_phase = "extraction"
+                    st.rerun()
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Completed State
+        elif st.session_state.current_phase == "completed":
+            # Show all phases as completed
+            with st.expander("✅ Phase 1: Classification (Completed)", expanded=False):
+                st.info(st.session_state.classification_result)
+            
+            with st.expander("✅ Phase 2: Extraction (Completed)", expanded=False):
+                st.info(st.session_state.extraction_result)
+            
+            st.markdown('<div class="phase-card">', unsafe_allow_html=True)
+            st.markdown('<div class="phase-header">📰 Generated Article <span class="phase-status completed">Completed</span></div>', unsafe_allow_html=True)
+            
+            # Display the article
+            st.markdown("### Your Article")
+            st.markdown('<div class="result-box">', unsafe_allow_html=True)
+            st.markdown(st.session_state.article_result)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Action buttons
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
                 st.download_button(
-                    label="📥 Download Transcript (TXT)",
-                    data=st.session_state.transcript_data,
-                    file_name=f"transcript_{st.session_state.video_id}.txt",
-                    mime="text/plain"
+                    label="📥 Download Article",
+                    data=st.session_state.article_result,
+                    file_name=f"article_{st.session_state.video_id}.md",
+                    mime="text/markdown"
                 )
-                
-                if st.session_state.generation_results and st.session_state.generation_results["success"]:
-                    st.download_button(
-                        label="📥 Download Article (MD)",
-                        data=st.session_state.generation_results["article"],
-                        file_name=f"article_{st.session_state.video_id}.md",
-                        mime="text/markdown"
-                    )
             
             with col2:
-                json_data = json.dumps({
+                if st.button("🔄 Regenerate Article"):
+                    st.session_state.article_result = None
+                    st.session_state.current_phase = "writing"
+                    st.rerun()
+            
+            with col3:
+                if st.button("📝 New Article"):
+                    # Reset everything except API key
+                    st.session_state.transcript_data = None
+                    st.session_state.structured_data = None
+                    st.session_state.video_id = None
+                    st.session_state.plain_text = None
+                    st.session_state.current_phase = None
+                    st.session_state.classification_result = None
+                    st.session_state.extraction_result = None
+                    st.session_state.article_result = None
+                    st.rerun()
+            
+            with col4:
+                # Export all data
+                all_data = {
                     "video_id": st.session_state.video_id,
-                    "segments": st.session_state.structured_data,
-                    "generation_results": st.session_state.generation_results
-                }, indent=2)
-                
+                    "classification": st.session_state.classification_result,
+                    "extraction": st.session_state.extraction_result,
+                    "article": st.session_state.article_result,
+                    "prompts_used": st.session_state.custom_prompts
+                }
                 st.download_button(
-                    label="📥 Download Complete Data (JSON)",
-                    data=json_data,
-                    file_name=f"complete_data_{st.session_state.video_id}.json",
+                    label="📊 Export All Data",
+                    data=json.dumps(all_data, indent=2),
+                    file_name=f"complete_{st.session_state.video_id}.json",
                     mime="application/json"
                 )
+            
+            st.markdown('</div>', unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
